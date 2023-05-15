@@ -159,8 +159,8 @@ public class IndexingServiceImpl implements IndexingService, CommandLineRunner {
                     }
                     allPoolsShutDown = allPoolsShutDown && pool.isShutdown();
                 }
-                isIndexing = !allPoolsShutDown;
-                if (!isIndexing) log.info("Indexing finished");
+//                isIndexing = !allPoolsShutDown;
+                if (allPoolsShutDown) log.info("Indexing finished");
             } catch (IndexOutOfBoundsException e) {
                 log.info("Indexing not running");
             }
