@@ -33,14 +33,6 @@ public class PageProcessor {
     private final JsoupConnect connect;
 
 
-//    @Override
-//    public void run() {
-//        if (!url.isEmpty()) {
-//            Document doc = getDocFromUrl(url);
-//            indexPage(doc, true);
-//        }
-//    }
-
     private synchronized PageEntity savePage(String path, int code, String content) {
 
         synchronized (Lock.class) {

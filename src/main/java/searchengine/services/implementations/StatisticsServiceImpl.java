@@ -28,12 +28,6 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     @Override
     public StatisticsResponse getStatistics() {
-//        String[] statuses = { "INDEXED", "FAILED", "INDEXING" };
-//        String[] errors = {
-//                "Ошибка индексации: главная страница сайта не доступна",
-//                "Ошибка индексации: сайт не доступен",
-//                ""
-//        };
 
         String status = "N/A";
         String error = "";

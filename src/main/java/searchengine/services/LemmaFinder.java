@@ -49,7 +49,6 @@ public class LemmaFinder {
                 continue;
             }
 
-//            String normalWord = normalForms.get(0);
             for (String normalWord : normalForms) {
                 if (lemmas.containsKey(normalWord)) {
                     lemmas.put(normalWord, lemmas.get(normalWord) + 1);

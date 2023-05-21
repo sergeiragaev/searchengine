@@ -27,12 +27,6 @@ public class LinksProcessor extends RecursiveTask<List<String>> {
             return result;
         }
 
-//        try {
-//            Thread.sleep(1000);
-//        } catch (InterruptedException e) {
-//            throw new RuntimeException(e);
-//        }
-
         String validURL = rootURL + URL;
         String urlPath = URL;
         if (!rootURL.equals(site.getUrl()) && URL.equals("/")) {
