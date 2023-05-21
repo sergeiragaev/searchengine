@@ -1,59 +1,61 @@
 package searchengine.services;
 
+import lombok.RequiredArgsConstructor;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import searchengine.config.Site;
-import searchengine.services.implementations.IndexingServiceImpl;
 
-import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.RecursiveTask;
 
-public class LinksProcessor extends RecursiveTask<Boolean> {
+@RequiredArgsConstructor
+public class LinksProcessor extends RecursiveTask<List<String>> {
     private final String rootURL;
     private final String URL;
     private final Site site;
     private final PageProcessor pageProcessor;
-
-    public LinksProcessor(String rootURL, String URL, Site site, PageProcessor pageProcessor) {
-        this.rootURL = rootURL;
-        this.URL = URL;
-        this.site = site;
-        this.pageProcessor = pageProcessor;
-    }
+    private final List<String> result;
+    private final boolean indexOnlyOnePage;
 
     @Override
-    protected Boolean compute() {
+    protected List<String> compute() {
 
-        if (!IndexingServiceImpl.isIndexing) {
-            return false;
+
+        if (!MainProcessor.isIndexing && !indexOnlyOnePage) {
+            return result;
         }
 
-        try {
-            Thread.sleep(1000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+//        try {
+//            Thread.sleep(1000);
+//        } catch (InterruptedException e) {
+//            throw new RuntimeException(e);
+//        }
 
         String validURL = rootURL + URL;
         String urlPath = URL;
         if (!rootURL.equals(site.getUrl()) && URL.equals("/")) {
             urlPath = rootURL;
         }
-        if (!pageProcessor.existsByPathAndSite(urlPath)) {
+        if (!pageProcessor.existsByPathAndSite(urlPath) || indexOnlyOnePage) {
             Document doc = pageProcessor.getDocFromUrl(validURL);
             if (doc != null) {
-                pageProcessor.indexPage(doc, false);
-                Elements elements = doc.select("a");
-                forkLinks(elements);
+                pageProcessor.indexPage(doc, indexOnlyOnePage);
+                result.add(urlPath);
+                if (!indexOnlyOnePage) {
+                    Elements elements = doc.select("a");
+                    forkLinks(elements);
+                }
             }
         }
-        return true;
+        return result;
     }
 
     private void forkLinks(Elements elements) {
+
+        List<LinksProcessor> tasks = new ArrayList<>();
         for (Element element : elements) {
-//            String href = element.attributes().get("href");
             String path = element.attr("abs:href");
             String purePath = pageProcessor.deletePrefix(path);
             String pureSiteUrl = pageProcessor.deletePrefix(site.getUrl());
@@ -61,15 +63,19 @@ public class LinksProcessor extends RecursiveTask<Boolean> {
                 continue;
             }
             String href = purePath.replaceAll(pureSiteUrl, "");
-            if (!href.contains("?") && !href.contains("#") && !href.isEmpty()
-                    && (!href.contains(":"))) {
-                if (!pageProcessor.existsByPathAndSite(href)) {
-                    LinksProcessor task;
-                    task = new LinksProcessor(rootURL, href, site, pageProcessor);
-                    task.fork();
-                }
+            if (!href.contains("?")
+                    && !href.contains("#")
+                    && !href.isEmpty()
+                    && (!href.contains(":"))
+                    && !pageProcessor.existsByPathAndSite(href)) {
+                LinksProcessor task;
+                task = new LinksProcessor(rootURL, href, site, pageProcessor, result, indexOnlyOnePage);
+                task.fork();
+                tasks.add(task);
             }
         }
     }
+
+    public Site getSite(){ return site;}
 }
 

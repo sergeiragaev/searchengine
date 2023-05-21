@@ -45,8 +45,9 @@ public class LemmaProcessor {
             LemmaFinder lemmaFinder = LemmaFinder.getInstance();
             indexRepository.deleteByPage(pageEntity.getId());
             Map<String, Integer> lemmas = lemmaFinder.collectLemmas(newText);
-            for (String key : lemmas.keySet()) {
-                int frequency = lemmas.get(key);
+            for (Map.Entry<String, Integer> entry : lemmas.entrySet()) {
+                String key = entry.getKey();
+                int frequency = entry.getValue();
                 LemmaEntity lemma = saveLemma(key);
                 saveIndex(lemma, frequency);
             }

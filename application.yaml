@@ -24,9 +24,9 @@ indexing-settings:
       name: Skillbox
 #    - url: https://www.playback.ru
 #      name: PlayBack.Ru
-    - url: https://dimonvideo.ru/
-      name: dimonvideo
-#    - url: http://mir-kuhni.ru/
+#    - url: https://dimonvideo.ru
+#      name: dimonvideo
+#    - url: http://mir-kuhni.ru
 #      name: Mir kuhni
 
 jsoup-setting:

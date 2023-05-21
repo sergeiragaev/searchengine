@@ -33,69 +33,28 @@ public class SearchServiceImpl implements SearchService {
     @Autowired
     private final LemmaRepository lemmaRepository;
 
+    private List<SiteEntity> siteEntities;
+    private Set<String> lemmas;
+    private LemmaFinder lemmaFinder;
+    private  List<DetailedSearchItem> detailedData;
+
+    private static final int SNIPPED_CHARS_COUNT = 200;
+
+
+
     @Override
     public SearchResponse search(String query, String site, int offset, int limit) {
 
-        SiteEntity siteEntity = null;
-        if (site != null) {
-            siteEntity = siteRepository.findByUrl(site);
-        }
+        siteEntities = createSiteEntityList(site);
 
-        List<DetailedSearchItem> detailedData = new ArrayList<>();
+        detailedData = new ArrayList<>();
 
         try {
-            LemmaFinder lemmaFinder = LemmaFinder.getInstance();
-            Set<String> lemmas = lemmaFinder.getLemmaSet(query);
-            Map<LemmaEntity, Integer> lemmaFrequencyMap = new HashMap<>();
-            List<SiteEntity> siteEntities = new ArrayList<>();
-            if (siteEntity != null) {
-                siteEntities.add(siteEntity);
-            } else {
-                List<Site> sitesList = sites.getSites();
-                for (Site siteToLook : sitesList) {
-                    SiteEntity currentSiteEntity = siteRepository.findByUrl(siteToLook.getUrl());
-                    if (currentSiteEntity != null) {
-                        siteEntities.add(currentSiteEntity);
-                    }
-                }
-            }
+            lemmaFinder = LemmaFinder.getInstance();
+            lemmas = lemmaFinder.getLemmaSet(query);
 
-            for (SiteEntity currentSiteEntity : siteEntities) {
-                if (!containsAllLemmas(currentSiteEntity, lemmas)) {
-                    continue;
-                }
-                for (String lemma : lemmas) {
-                    LemmaEntity lemmaEntity = lemmaRepository.findLemmaEntityByLemmaAndSite(lemma, currentSiteEntity);
-                    if (lemmaEntity != null) {
-                        lemmaFrequencyMap.put(lemmaEntity, lemmaEntity.getFrequency());
-                    }
-                }
-            }
-            List<SiteEntity> checkedSites = new ArrayList<>();
-            HashSet<PageEntity> foundPages = new HashSet<>();
-            Map<LemmaEntity, Integer> sortedMap = (Map<LemmaEntity, Integer>) sortValues(lemmaFrequencyMap, false);
-            for (LemmaEntity lemmaEntity : sortedMap.keySet()) {
-                SiteEntity currentSiteEntity = lemmaEntity.getSite();
-                if (checkedSites.contains(currentSiteEntity)) {
-                    continue;
-                }
-                checkedSites.add(currentSiteEntity);
-                foundPages.addAll(collectPages(lemmaEntity, lemmas));
-            }
-            HashMap<PageEntity, Float> rankedPages = new HashMap<>();
-            Float maxRank = 0F;
-            for (PageEntity page : foundPages) {
-                maxRank = Math.max(addToRankedPages(page, rankedPages, lemmas), maxRank);
-            }
-            Map<PageEntity, Float> sortedPagesMap = (Map<PageEntity, Float>) sortValues(rankedPages, true);
-//            int currentPage = 0;
-            for (PageEntity page : sortedPagesMap.keySet()) {
-                float relevance = sortedPagesMap.get(page) / maxRank;
-//                currentPage++;
-//                if (offset*limit <= currentPage && (offset + 1)*limit >= currentPage) {
-                    addToDetailedList(page, detailedData, lemmaFinder, lemmas, relevance);
-//                }
-            }
+            createdDetailedData();
+
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -114,7 +73,76 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
-    private float addToRankedPages(PageEntity page, Map<PageEntity, Float> rankedPages, Set<String> lemmas) {
+    private void createdDetailedData() {
+        Map<LemmaEntity, Integer> lemmaFrequencyMap = createLemmaFrequencyMap();
+        List<SiteEntity> checkedSites = new ArrayList<>();
+        HashSet<PageEntity> foundPages = new HashSet<>();
+        Map<LemmaEntity, Integer> sortedLemmaMap = (Map<LemmaEntity, Integer>) sortValues(lemmaFrequencyMap, false);
+        for (LemmaEntity lemmaEntity : sortedLemmaMap.keySet()) {
+            SiteEntity currentSiteEntity = lemmaEntity.getSite();
+            if (checkedSites.contains(currentSiteEntity)) {
+                continue;
+            }
+            checkedSites.add(currentSiteEntity);
+            foundPages.addAll(collectPages(lemmaEntity));
+        }
+        sortPagesByRank(foundPages);
+    }
+
+    private Map<LemmaEntity, Integer> createLemmaFrequencyMap() {
+
+        Map<LemmaEntity, Integer> lemmaFrequencyMap = new HashMap<>();
+
+        for (SiteEntity currentSiteEntity : siteEntities) {
+            if (!containsAllLemmas(currentSiteEntity)) {
+                continue;
+            }
+            for (String lemma : lemmas) {
+                LemmaEntity lemmaEntity = lemmaRepository.findLemmaEntityByLemmaAndSite(lemma, currentSiteEntity);
+                if (lemmaEntity != null) {
+                    lemmaFrequencyMap.put(lemmaEntity, lemmaEntity.getFrequency());
+                }
+            }
+        }
+        return lemmaFrequencyMap;
+    }
+
+    private void sortPagesByRank(HashSet<PageEntity> foundPages) {
+        Float maxRank = 0F;
+        HashMap<PageEntity, Float> rankedPages = new HashMap<>();
+        for (PageEntity page : foundPages) {
+            maxRank = Math.max(addToRankedPages(page, rankedPages), maxRank);
+        }
+        HashMap<PageEntity, Float> sortedPagesMap = (HashMap<PageEntity, Float>) sortValues(rankedPages, true);
+        for (PageEntity page : sortedPagesMap.keySet()) {
+            float relevance = sortedPagesMap.get(page) / maxRank;
+            addToDetailedList(page, relevance);
+        }
+    }
+
+    private List<SiteEntity> createSiteEntityList(String site) {
+
+        SiteEntity siteEntity = null;
+        if (site != null) {
+            siteEntity = siteRepository.findByUrl(site);
+        }
+
+        siteEntities = new ArrayList<>();
+        if (siteEntity != null) {
+            siteEntities.add(siteEntity);
+        } else {
+            List<Site> sitesList = sites.getSites();
+            for (Site siteToLook : sitesList) {
+                SiteEntity currentSiteEntity = siteRepository.findByUrl(siteToLook.getUrl());
+                if (currentSiteEntity != null) {
+                    siteEntities.add(currentSiteEntity);
+                }
+            }
+        }
+        return siteEntities;
+    }
+
+    private float addToRankedPages(PageEntity page, Map<PageEntity, Float> rankedPages) {
         float result = 0F;
         for (String lemma : lemmas) {
             SiteEntity siteEntity = page.getSite();
@@ -138,7 +166,7 @@ public class SearchServiceImpl implements SearchService {
         return result;
     }
 
-    private boolean containsAllLemmas(SiteEntity currentSiteEntity, Set<String> lemmas) {
+    private boolean containsAllLemmas(SiteEntity currentSiteEntity) {
         for (String lemma : lemmas) {
             LemmaEntity lemmaEntity = lemmaRepository.findLemmaEntityByLemmaAndSite(lemma, currentSiteEntity);
             if (lemmaEntity == null) {
@@ -148,8 +176,7 @@ public class SearchServiceImpl implements SearchService {
         return true;
     }
 
-    private Set<PageEntity> collectPages(LemmaEntity lemmaEntity,
-                              Set<String> lemmas) {
+    private Set<PageEntity> collectPages(LemmaEntity lemmaEntity) {
 
         HashSet<PageEntity> foundPages = new HashSet<>();
         List<IndexEntity> indexEntityList = lemmaEntity.getIndexEntities();
@@ -167,7 +194,7 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private Set<PageEntity> mergePages(Set<String> lemmas,
-                                           Set<PageEntity> pages, SiteEntity siteEntity) {
+                                       Set<PageEntity> pages, SiteEntity siteEntity) {
         if (lemmas.isEmpty()) {
             return pages;
         }
@@ -205,9 +232,7 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
-    private void addToDetailedList(PageEntity page, List<DetailedSearchItem> detailed,
-                                   LemmaFinder lemmaFinder, Set<String> lemmas, float relevance) {
-//        PageEntity pageEntity = pageRepository.findById(pageId).get();
+    private void addToDetailedList(PageEntity page, float relevance) {
         SiteEntity siteEntity = page.getSite();
         DetailedSearchItem item = new DetailedSearchItem();
         item.setSite(siteEntity.getUrl());
@@ -217,14 +242,39 @@ public class SearchServiceImpl implements SearchService {
         String title = doc.title();
         item.setTitle(title);
         String text = doc.text()
-//                .clean(content, Safelist.simpleText())
-//                .replaceAll("[^А-Яа-яЁё\\d\\s,.!]+", " ")
                 .replaceAll("\\s+", " ");
+        String snippet = createSnippet(text);
+        String snippedWithBoldLemmas = addBoldToSnippet(snippet);
+        item.setSnippet(snippedWithBoldLemmas);
+        item.setRelevance(relevance);
+        detailedData.add(item);
+    }
+
+    private String addBoldToSnippet(String text) {
+        String[] snippetWords = text
+                .trim().split("\\s");
+        String result = "";
+        for (String snippetWord : snippetWords) {
+            Set<String> lemmaSnippet = lemmaFinder.getLemmaSet(snippetWord);
+            boolean haveToBold = false;
+            for (String keySnippet : lemmaSnippet) {
+                for (String lemmaFromQuery : lemmas) {
+                    if (lemmaFromQuery.equals(keySnippet)) {
+                        haveToBold = true;
+                        break;
+                    }
+                }
+            }
+            result = result + (haveToBold ? "<b> " : " ") + snippetWord + (haveToBold ? "</b> " : " ");
+        }
+        return result;
+    }
+
+    private String createSnippet(String  text) {
 
         String[] textWords = text
-//                .replaceAll("[\\d\\s,.!]+", " ")
-                .trim().split("\\s+");
-        int start = 0;
+                .trim().split("\\s");
+        int start = -1;
         for (String word : textWords) {
             Set<String> lemmaWords = lemmaFinder.getLemmaSet(word);
             for (String lemmaWord : lemmaWords) {
@@ -233,47 +283,24 @@ public class SearchServiceImpl implements SearchService {
                     break;
                 }
             }
+            if (start > -1) break;
         }
-        String textToFindStart = text.replaceAll("[А-ЯЁ\"]", "!");
+        String textToFindStart = text.replaceAll("[А-ЯЁ\"«]", "!");
 
-        for (;;) {
-            if (start < 0
-                    || textToFindStart.substring(start).startsWith(" !")) {
+        for (; start > 0; start--) {
+            if (textToFindStart.substring(start).startsWith(" !")) {
                 start++;
                 break;
             }
-            start--;
         }
 
-        int end = start + 200;
-        for (;;) {
-            if (text.length() <= end || textToFindStart.substring(end).startsWith(" !")) {
-                end = Math.min(text.length(), end);
+        int end = start + SNIPPED_CHARS_COUNT;
+        for (; end <= text.length(); end++) {
+            if (textToFindStart.substring(end).startsWith(" !")) {
                 break;
             }
-            end++;
         }
 
-        String snippet = text.substring(start, end);
-        String[] snippetWords = snippet
-//                .replaceAll("[\\d\\s,.!]+", " ")
-                .trim().split("\\s+");
-        String newSnipped = "";
-        for (String snippetWord : snippetWords) {
-            Set<String> lemmaSnippet = lemmaFinder.getLemmaSet(snippetWord);
-            boolean haveToBold = false;
-            for (String keySnippet : lemmaSnippet) {
-                for (String key : lemmas) {
-                    if (key.equals(keySnippet)) {
-                        haveToBold = true;
-                        break;
-                    }
-                }
-            }
-            newSnipped = newSnipped + (haveToBold ? "<b> " : " ") + snippetWord + (haveToBold ? "</b> " : " ");
-        }
-        item.setSnippet(newSnipped);
-        item.setRelevance(relevance);
-        detailed.add(item);
+        return text.substring(start, end);
     }
 }
