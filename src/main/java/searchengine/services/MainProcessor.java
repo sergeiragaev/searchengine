@@ -29,13 +29,14 @@ public class MainProcessor extends Thread {
     public static boolean isIndexing;
     private final JsoupConnect connect;
     private final HashMap<LinksProcessor, ForkJoinPool> linksList = new HashMap<>();
+    private boolean isStopped;
 
     private void checkIndexingFinished() {
         boolean isIndexingDone = false;
         do {
             isIndexingDone = true;
             try {
-                TimeUnit.SECONDS.sleep(1);
+                TimeUnit.SECONDS.sleep(2);
                 for (Map.Entry<LinksProcessor, ForkJoinPool> entry : linksList.entrySet()) {
                     LinksProcessor links = entry.getKey();
                     if (!poolIsDone(links.getSite().getUrl())) {
@@ -45,16 +46,19 @@ public class MainProcessor extends Thread {
                 }
                 if (isIndexingDone) {
                     isIndexing = false;
-                    log.info("Indexing finished");
+                    if (!isStopped) {
+                        log.info("Indexing finished");
+                    }
                     for (Map.Entry<LinksProcessor, ForkJoinPool> entry : linksList.entrySet()) {
                         LinksProcessor links = entry.getKey();
-                        if (links.isDone()) {
-                            ForkJoinPool pool = entry.getValue();
-                            if (pool.getActiveThreadCount() == 0) {
-                                pool.shutdown();
-                                List<String> results;
-                                results = links.join();
-                                log.info("There are {} pages indexed for site: {}", results.size(), links.getSite().getUrl());
+                        ForkJoinPool pool = entry.getValue();
+                        if (links.isDone() && pool.getActiveThreadCount() == 0) {
+                            pool.shutdown();
+                            TreeSet<String> results = links.join();
+                            Site site = links.getSite();
+                            log.info("There are {} pages indexed for site: {}", results.size(), site.getUrl());
+                            if (!isStopped) {
+                                saveSite(site, "", StatusType.INDEXED);
                             }
                         }
                     }
@@ -94,9 +98,8 @@ public class MainProcessor extends Thread {
             isIndexing = true;
             linksList.clear();
             List<Site> sitesList = sites.getSites();
-            for (int i = 0; i < sitesList.size(); i++) {
+            for (Site site : sitesList) {
                 ForkJoinPool pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors() / sitesList.size());
-                Site site = sitesList.get(i);
                 SiteEntity siteEntity = siteRepository.findByUrl(site.getUrl());
                 if (siteEntity != null) {
                     log.info("Deleting data for site: {}", site.getUrl());
@@ -109,40 +112,47 @@ public class MainProcessor extends Thread {
                     lemmaRepository.deleteAllBySite(siteId);
                     siteRepository.delete(siteEntity);
                 }
-                indexSite(site, pool, false);
+                indexSite(site, pool);
             }
             log.info("Indexing started");
         }
     }
 
-    private void indexSite(Site site, ForkJoinPool pool, boolean indexOnlyOnePage) {
+    private void indexSite(Site site, ForkJoinPool pool) {
         SiteEntity siteEntity = saveSite(site, "", StatusType.INDEXING);
         PageProcessor pageProcessor = new PageProcessor(pageRepository, siteRepository, lemmaRepository, indexRepository, siteEntity, connect);
-        List<String> result = new ArrayList<>();
-        LinksProcessor links = new LinksProcessor(site.getUrl(), "/", site, pageProcessor, result, indexOnlyOnePage);
+        TreeSet<String> listOfURL = new TreeSet<>();
+        LinksProcessor links = new LinksProcessor(site.getUrl(), "/", site, pageProcessor, false, listOfURL);
         linksList.put(links, pool);
         pool.execute(links);
     }
 
     public void stopIndexing() {
         isIndexing = false;
+        isStopped = true;
+        boolean allPoolsDone = true;
         List<Site> sitesList = sites.getSites();
-        for (Site site : sitesList) {
-            SiteEntity siteEntity = siteRepository.findByUrl(site.getUrl());
-            if (siteEntity != null) {
-                if (siteEntity.getStatus() != StatusType.INDEXED) {
-                    do {
-                        try {
-                            TimeUnit.SECONDS.sleep(2);
-                        } catch (InterruptedException e) {
-                            throw new RuntimeException(e);
+        do {
+            try {
+                TimeUnit.SECONDS.sleep(2);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            allPoolsDone = true;
+            for (Site site : sitesList) {
+                SiteEntity siteEntity = siteRepository.findByUrl(site.getUrl());
+                if (siteEntity != null) {
+                    if (siteEntity.getStatus() != StatusType.INDEXED) {
+                        allPoolsDone = allPoolsDone && poolIsDone(site.getUrl());
+                        if (allPoolsDone) {
+                            saveSite(site, "Индексация остановлена пользователем", StatusType.FAILED);
+                        } else {
+                            log.info("Waiting while data finished collect for site: {}", site.getUrl());
                         }
-                        log.info("Waiting while data finished collect for site: {}", site.getUrl());
-                    } while (!poolIsDone(site.getUrl()));
-                    saveSite(site, "Индексация остановлена пользователем", StatusType.FAILED);
+                    }
                 }
             }
-        }
+        } while (!allPoolsDone);
         log.info("Indexing stopped");
     }
 
@@ -156,8 +166,8 @@ public class MainProcessor extends Thread {
                 ForkJoinPool pool = entry.getValue();
                 if (pool.getActiveThreadCount() == 0) {
                     poolIsDone = true;
-                    break;
                 }
+                break;
             }
         }
         return poolIsDone;
@@ -172,9 +182,9 @@ public class MainProcessor extends Thread {
                     isIndexing = true;
                     SiteEntity siteEntity = siteRepository.findByUrl(site.getUrl());
                     linksList.clear();
-                    List<String> result = new ArrayList<>();
+                    TreeSet<String> listOfURL = new TreeSet<>();
                     PageProcessor pageProcessor = new PageProcessor(pageRepository, siteRepository, lemmaRepository, indexRepository, siteEntity, connect);
-                    LinksProcessor links = new LinksProcessor(url, "", site, pageProcessor, result, true);
+                    LinksProcessor links = new LinksProcessor(url, "", site, pageProcessor, true, listOfURL);
                     ForkJoinPool pool = new ForkJoinPool();
                     linksList.put(links, pool);
                     pool.execute(links);

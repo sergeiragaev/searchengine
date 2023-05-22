@@ -33,9 +33,10 @@ public class PageProcessor {
     private final JsoupConnect connect;
 
 
-    private synchronized PageEntity savePage(String path, int code, String content) {
+    private PageEntity savePage(String path, int code, String content) {
 
         synchronized (Lock.class) {
+
             Lock readLock = rwLock.readLock();
             readLock.lock();
             try {
@@ -43,16 +44,15 @@ public class PageProcessor {
                     PageEntity pageEntity = pageRepository.findByPathAndSite(path, siteEntity);
                     if (pageEntity == null) {
                         pageEntity = new PageEntity();
+                        pageEntity.setPath(path);
+                        pageEntity.setSite(siteEntity);
                     }
-                    pageEntity.setPath(path);
                     pageEntity.setCode(code);
                     pageEntity.setContent(content);
+                    pageRepository.saveAndFlush(pageEntity);
 
                     siteEntity.setStatusTime(LocalDateTime.now());
-
                     siteRepository.save(siteEntity);
-                    pageEntity.setSite(siteEntity);
-                    pageRepository.save(pageEntity);
 
                     return pageEntity;
                 } else {
@@ -64,16 +64,22 @@ public class PageProcessor {
         }
     }
 
-    synchronized boolean existsByPathAndSite(String path) {
+    private boolean existsByPathAndSite(String path) {
         synchronized (Lock.class) {
             Lock writeLock = rwLock.writeLock();
             writeLock.lock();
             try {
-                return pageRepository.existsByPathAndSite(path, siteEntity);
+                pageRepository.flush();
+                PageEntity result = pageRepository.findByPathAndSite(path, siteEntity);
+                return result != null;
             } finally {
                 writeLock.unlock();
             }
         }
+    }
+
+    boolean existsByPath(String path){
+        return existsByPathAndSite(path);
     }
 
     public void indexPage(Document doc, boolean removeOldText) {
@@ -81,17 +87,18 @@ public class PageProcessor {
         String urlPath = deletePrefix(doc.location())
                 .replace(deletePrefix(siteEntity.getUrl()), "");
         if (!existsByPathAndSite(urlPath) || removeOldText) {
-            PageEntity pageEntity = pageRepository.findByPathAndSite(urlPath, siteEntity);
             String oldText = "";
+            PageEntity pageEntity;
             if (removeOldText) {
+                pageEntity = pageRepository.findByPathAndSite(urlPath, siteEntity);
                 if (pageEntity != null) {
                     oldText = Jsoup.parse(pageEntity.getContent()).text()
                             .replaceAll("[^А-Яа-яЁё\\d\\s,.!]+", " ")
                             .replaceAll("\\s+", " ");
                 }
             }
+            log.info("Indexing page: {}", doc.location());
             pageEntity = savePage(urlPath, doc.connection().response().statusCode(), doc.outerHtml());
-            log.info("Indexing page: {}", siteEntity.getUrl() + urlPath);
             LemmaProcessor lemmaProcessor = new LemmaProcessor(pageEntity, lemmaRepository, indexRepository, oldText,
                     doc.text(), siteEntity, urlPath);
             if (!oldText.isEmpty()) {
