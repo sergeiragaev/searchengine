@@ -64,7 +64,7 @@ public class LemmaProcessor {
         indexRepository.save(indexEntity);
     }
 
-    private synchronized LemmaEntity saveLemma(String lemma) {
+    private LemmaEntity saveLemma(String lemma) {
         synchronized (Lock.class) {
             Lock readLock = rwLock.readLock();
             readLock.lock();
@@ -97,7 +97,7 @@ public class LemmaProcessor {
     }
 
 
-    private synchronized void deleteLemma(String lemma) {
+    private void deleteLemma(String lemma) {
         synchronized (Lock.class) {
             Lock readLock = rwLock.readLock();
             readLock.lock();

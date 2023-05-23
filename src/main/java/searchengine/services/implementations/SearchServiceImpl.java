@@ -3,6 +3,7 @@ package searchengine.services.implementations;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.safety.Safelist;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import searchengine.config.Site;
@@ -241,7 +242,7 @@ public class SearchServiceImpl implements SearchService {
         Document doc = Jsoup.parse(page.getContent());
         String title = doc.title();
         item.setTitle(title);
-        String text = doc.text()
+        String text = Jsoup.clean(doc.text(), Safelist.none())
                 .replaceAll("\\s+", " ");
         String snippet = createSnippet(text);
         String snippedWithBoldLemmas = addBoldToSnippet(snippet);
@@ -294,8 +295,8 @@ public class SearchServiceImpl implements SearchService {
             }
         }
 
-        int end = start + SNIPPED_CHARS_COUNT;
-        for (; end <= text.length(); end++) {
+        int end = Math.min(start + SNIPPED_CHARS_COUNT, text.length() - 1);
+        for (; end < text.length(); end++) {
             if (textToFindStart.substring(end).startsWith(" !")) {
                 break;
             }

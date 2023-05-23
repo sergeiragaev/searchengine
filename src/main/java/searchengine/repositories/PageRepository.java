@@ -15,4 +15,7 @@ public interface PageRepository extends JpaRepository<PageEntity, Integer> {
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "DELETE FROM `page` WHERE site_id = :siteId", nativeQuery = true)
     void deleteBySite(int siteId);
+    boolean existsPageEntityByPathAndSite(String path, SiteEntity site);
+
+    int countPageEntitiesBySite(SiteEntity site);
 }

@@ -7,8 +7,6 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import searchengine.config.Site;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.TreeSet;
 import java.util.concurrent.RecursiveTask;
 
@@ -35,35 +33,30 @@ public class LinksProcessor extends RecursiveTask<TreeSet<String>> {
             throw new RuntimeException(e);
         }
 
-        List<LinksProcessor> tasks = new ArrayList<>();
-
         String validURL = rootURL + URL;
         String urlPath = URL;
         if (!rootURL.equals(site.getUrl()) && URL.equals("/")) {
             urlPath = rootURL;
         }
 
-        if (pageProcessor.existsByPath(urlPath) && !indexOnlyOnePage) {
-            return listOfURL;
-        }
-        if (!listOfURL.add(validURL)) {
+        if (pageProcessor.existsByPath(urlPath) && !indexOnlyOnePage || !listOfURL.add(validURL)) {
             return listOfURL;
         }
 
+//        log.info(validURL);
 
         Document doc = pageProcessor.getDocFromUrl(validURL);
         if (doc != null) {
-//            log.info(urlPath);
             pageProcessor.indexPage(doc, indexOnlyOnePage);
             if (!indexOnlyOnePage) {
                 Elements elements = doc.select("a");
-                forkLinks(elements, tasks);
+                forkLinks(elements);
             }
         }
         return listOfURL;
     }
 
-    private void forkLinks(Elements elements, List<LinksProcessor> tasks) {
+    private void forkLinks(Elements elements) {
 
         for (Element element : elements) {
             String path = element.attr("abs:href");
@@ -80,11 +73,10 @@ public class LinksProcessor extends RecursiveTask<TreeSet<String>> {
                     && !href.endsWith(".pdf")
                     && !href.endsWith(".jpg")
                     && !href.endsWith(".jpeg")
+                    && !href.endsWith(".zip")
+                    && !href.endsWith(".rar")
                     && !href.endsWith(".png")) {
-                LinksProcessor task;
-                task = new LinksProcessor(rootURL, href, site, pageProcessor, indexOnlyOnePage, listOfURL);
-                task.fork();
-                tasks.add(task);
+                new LinksProcessor(rootURL, href, site, pageProcessor, indexOnlyOnePage, listOfURL).fork();
             }
         }
     }

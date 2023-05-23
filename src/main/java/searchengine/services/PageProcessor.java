@@ -49,7 +49,7 @@ public class PageProcessor {
                     }
                     pageEntity.setCode(code);
                     pageEntity.setContent(content);
-                    pageRepository.saveAndFlush(pageEntity);
+                    pageRepository.save(pageEntity);
 
                     siteEntity.setStatusTime(LocalDateTime.now());
                     siteRepository.save(siteEntity);
@@ -64,29 +64,15 @@ public class PageProcessor {
         }
     }
 
-    private boolean existsByPathAndSite(String path) {
-        synchronized (Lock.class) {
-            Lock writeLock = rwLock.writeLock();
-            writeLock.lock();
-            try {
-                pageRepository.flush();
-                PageEntity result = pageRepository.findByPathAndSite(path, siteEntity);
-                return result != null;
-            } finally {
-                writeLock.unlock();
-            }
-        }
-    }
-
-    boolean existsByPath(String path){
-        return existsByPathAndSite(path);
+    boolean existsByPath(String path) {
+        return pageRepository.existsPageEntityByPathAndSite(path, siteEntity);
     }
 
     public void indexPage(Document doc, boolean removeOldText) {
 
         String urlPath = deletePrefix(doc.location())
                 .replace(deletePrefix(siteEntity.getUrl()), "");
-        if (!existsByPathAndSite(urlPath) || removeOldText) {
+        if (!existsByPath(urlPath) || removeOldText) {
             String oldText = "";
             PageEntity pageEntity;
             if (removeOldText) {

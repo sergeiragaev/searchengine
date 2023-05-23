@@ -18,19 +18,19 @@ spring:
 
 indexing-settings:
   sites:
-    - url: https://www.lenta.ru
-      name: Лента.ру
+    - url: https://radiomv.ru/
+      name: Radio MV
     - url: https://www.skillbox.ru
       name: Skillbox
-#    - url: https://www.playback.ru
-#      name: PlayBack.Ru
+    - url: https://et-cetera.ru/mobile
+      name: Et Cetera
+    - url: https://www.playback.ru
+      name: PlayBack.Ru
 #    - url: https://dimonvideo.ru
 #      name: dimonvideo
-#    - url: http://mir-kuhni.ru
-#      name: Mir kuhni
 
 jsoup-setting:
-  userAgent: Sergei's searching bot
+  userAgent: Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36
   referrer: http://www.google.com
   timeout: 5000
   ignoreHttpErrors: true
