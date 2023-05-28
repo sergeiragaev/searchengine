@@ -14,9 +14,6 @@ import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 
 import java.time.LocalDateTime;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 @RequiredArgsConstructor
 @Log4j2
@@ -27,7 +24,6 @@ public class PageProcessor {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
 
-    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
     private final SiteEntity siteEntity;
 
     private final JsoupConnect connect;
@@ -35,32 +31,23 @@ public class PageProcessor {
 
     private PageEntity savePage(String path, int code, String content) {
 
-        synchronized (Lock.class) {
-
-            Lock readLock = rwLock.readLock();
-            readLock.lock();
-            try {
-                if (siteEntity != null) {
-                    PageEntity pageEntity = pageRepository.findByPathAndSite(path, siteEntity);
-                    if (pageEntity == null) {
-                        pageEntity = new PageEntity();
-                        pageEntity.setPath(path);
-                        pageEntity.setSite(siteEntity);
-                    }
-                    pageEntity.setCode(code);
-                    pageEntity.setContent(content);
-                    pageRepository.save(pageEntity);
-
-                    siteEntity.setStatusTime(LocalDateTime.now());
-                    siteRepository.save(siteEntity);
-
-                    return pageEntity;
-                } else {
-                    return null;
-                }
-            } finally {
-                readLock.unlock();
+        if (siteEntity != null) {
+            PageEntity pageEntity = pageRepository.findByPathAndSite(path, siteEntity);
+            if (pageEntity == null) {
+                pageEntity = new PageEntity();
+                pageEntity.setPath(path);
+                pageEntity.setSite(siteEntity);
             }
+            pageEntity.setCode(code);
+            pageEntity.setContent(content);
+            pageRepository.save(pageEntity);
+
+            siteEntity.setStatusTime(LocalDateTime.now());
+            siteRepository.save(siteEntity);
+
+            return pageEntity;
+        } else {
+            return null;
         }
     }
 

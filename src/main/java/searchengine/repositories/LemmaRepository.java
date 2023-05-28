@@ -12,6 +12,7 @@ import searchengine.model.SiteEntity;
 @Transactional()
 public interface LemmaRepository extends JpaRepository<LemmaEntity, Integer> {
     LemmaEntity findLemmaEntityByLemmaAndSite(String lemma, SiteEntity site);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "UPDATE lemma SET frequency=:newFrequency WHERE id = :lemmaId", nativeQuery = true)
     void updateFrequencyByLemma(int lemmaId, int newFrequency);
@@ -19,4 +20,6 @@ public interface LemmaRepository extends JpaRepository<LemmaEntity, Integer> {
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "DELETE FROM `lemma` WHERE site_id = :siteId", nativeQuery = true)
     void deleteAllBySite(int siteId);
+
+    int countLemmaEntitiesBySite(SiteEntity siteEntity);
 }

@@ -10,6 +10,8 @@ import searchengine.dto.statistics.StatisticsData;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.dto.statistics.TotalStatistics;
 import searchengine.model.SiteEntity;
+import searchengine.repositories.LemmaRepository;
+import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.services.interfaces.StatisticsService;
 
@@ -25,6 +27,10 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     @Autowired
     private final SiteRepository siteRepository;
+    @Autowired
+    private final PageRepository pageRepository;
+    @Autowired
+    private final LemmaRepository lemmaRepository;
 
     @Override
     public StatisticsResponse getStatistics() {
@@ -47,8 +53,8 @@ public class StatisticsServiceImpl implements StatisticsService {
             int lemmas = 0;
             SiteEntity siteEntity = siteRepository.findByUrl(site.getUrl());
             if (siteEntity != null) {
-                pages = siteEntity.getPageEntities().size();
-                lemmas = siteEntity.getLemmaEntities().size();
+                pages = pageRepository.countPageEntitiesBySite(siteEntity);
+                lemmas = lemmaRepository.countLemmaEntitiesBySite(siteEntity);
                 status = siteEntity.getStatus().toString();
                 error = siteEntity.getLastError();
                 millis = siteEntity.getStatusTime().toEpochSecond(ZoneOffset.of("+3")) * 1000;

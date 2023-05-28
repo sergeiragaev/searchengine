@@ -1,6 +1,7 @@
 package searchengine.services.implementations;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.log4j.Log4j2;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.safety.Safelist;
@@ -16,6 +17,7 @@ import searchengine.model.IndexEntity;
 import searchengine.model.LemmaEntity;
 import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
+import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.SiteRepository;
 import searchengine.services.LemmaFinder;
@@ -25,6 +27,7 @@ import java.io.IOException;
 import java.util.*;
 
 @Service
+@Log4j2
 @RequiredArgsConstructor
 public class SearchServiceImpl implements SearchService {
     private final SitesList sites;
@@ -33,19 +36,24 @@ public class SearchServiceImpl implements SearchService {
     private final SiteRepository siteRepository;
     @Autowired
     private final LemmaRepository lemmaRepository;
+    @Autowired
+    private final IndexRepository indexRepository;
 
     private List<SiteEntity> siteEntities;
     private Set<String> lemmas;
     private LemmaFinder lemmaFinder;
-    private  List<DetailedSearchItem> detailedData;
+    private List<DetailedSearchItem> detailedData;
+
+    private String query;
 
     private static final int SNIPPED_CHARS_COUNT = 200;
-
+    private static final int MAX_RESULT_COUNT = 100;
 
 
     @Override
     public SearchResponse search(String query, String site, int offset, int limit) {
 
+        this.query = query;
         siteEntities = createSiteEntityList(site);
 
         detailedData = new ArrayList<>();
@@ -62,7 +70,7 @@ public class SearchServiceImpl implements SearchService {
 
         if (detailedData.isEmpty()) {
             ErrorSearchResponse response = new ErrorSearchResponse();
-            response.setError("Страница с похожими словами не найдена");
+            response.setError("По вашему запросу ничего не найдено.");
             response.setResult(false);
             return response;
         } else {
@@ -114,10 +122,22 @@ public class SearchServiceImpl implements SearchService {
         for (PageEntity page : foundPages) {
             maxRank = Math.max(addToRankedPages(page, rankedPages), maxRank);
         }
-        HashMap<PageEntity, Float> sortedPagesMap = (HashMap<PageEntity, Float>) sortValues(rankedPages, true);
+        Map<PageEntity, Float> sortedPagesMap = (Map<PageEntity, Float>) sortValues(rankedPages, true);
         for (PageEntity page : sortedPagesMap.keySet()) {
             float relevance = sortedPagesMap.get(page) / maxRank;
             addToDetailedList(page, relevance);
+            if (detailedData.size() == MAX_RESULT_COUNT) {
+                break;
+            }
+        }
+        if (detailedData.isEmpty()) {
+            log.info("No pages found");
+        } else if (foundPages.size() == 500) {
+            log.info("Showing {} pages of more then {} found ({})", MAX_RESULT_COUNT, foundPages.size(), query);
+        } else if (detailedData.size() < foundPages.size()) {
+            log.info("Showing {} pages of {} found ({})", MAX_RESULT_COUNT, foundPages.size(), query);
+        } else {
+            log.info("Found {} pages ({})", detailedData.size(), query);
         }
     }
 
@@ -148,9 +168,9 @@ public class SearchServiceImpl implements SearchService {
         for (String lemma : lemmas) {
             SiteEntity siteEntity = page.getSite();
             LemmaEntity lemmaEntity = lemmaRepository.findLemmaEntityByLemmaAndSite(lemma, siteEntity);
-            List<IndexEntity> indexEntityList = lemmaEntity.getIndexEntities();
-            for (IndexEntity index : indexEntityList) {
-                if (index.getPage().equals(page)) {
+            if (lemmaEntity != null) {
+                List<IndexEntity> indexEntityList = indexRepository.searchTop1000ByPageAndLemmaOrderByRankDesc(page, lemmaEntity);
+                for (IndexEntity index : indexEntityList) {
                     if (!rankedPages.containsKey(page)) {
                         float newValue = index.getRank();
                         rankedPages.put(page, newValue);
@@ -180,7 +200,7 @@ public class SearchServiceImpl implements SearchService {
     private Set<PageEntity> collectPages(LemmaEntity lemmaEntity) {
 
         HashSet<PageEntity> foundPages = new HashSet<>();
-        List<IndexEntity> indexEntityList = lemmaEntity.getIndexEntities();
+        List<IndexEntity> indexEntityList = indexRepository.searchTop1000ByLemmaOrderByRankDesc(lemmaEntity);
         HashSet<PageEntity> firstPages = new HashSet<>();
         for (IndexEntity index : indexEntityList) {
             firstPages.add(index.getPage());
@@ -203,26 +223,36 @@ public class SearchServiceImpl implements SearchService {
         String lemma = lemmas.stream().toList().get(0);
         LemmaEntity lemmaEntity = lemmaRepository.findLemmaEntityByLemmaAndSite(lemma, siteEntity);
         if (lemmaEntity == null) {
-            return new HashSet<>();
+            return mergePages;
         }
-        List<IndexEntity> indexEntityList = lemmaEntity.getIndexEntities();
+        List<IndexEntity> indexEntityList = indexRepository.searchTop1000ByLemmaOrderByRankDesc(lemmaEntity);
         for (IndexEntity index : indexEntityList) {
             PageEntity page = index.getPage();
             if (pages.contains(page)) {
                 mergePages.add(page);
             }
         }
-        Set<String> nextLemmas = new HashSet<>(lemmas);
-        nextLemmas.remove(lemma);
-        return mergePages(nextLemmas, mergePages, siteEntity);
+        if (!mergePages.isEmpty()) {
+            Set<String> nextLemmas = new HashSet<>(lemmas);
+            nextLemmas.remove(lemma);
+            return mergePages(nextLemmas, mergePages, siteEntity);
+        } else {
+            return mergePages;
+        }
     }
 
-    private Map<?, ?> sortValues(Map<?, ?> lemmaFrequencyMap, boolean reverse) {
+    private Map<?, ?> sortValues(Map<?, ?> originalMap, boolean reverse) {
         {
-            var list = new LinkedList(lemmaFrequencyMap.entrySet());
-            //Custom Comparator
-            list.sort((o1, o2) -> ((Comparable) ((Map.Entry) (o1)).getValue()).compareTo(((Map.Entry) (o2)).getValue())
-                    * (reverse ? -1 : 1));
+            var list = new LinkedList(originalMap.entrySet());
+            if (reverse) {
+                list.sort((o1, o2) -> ((Comparable) (((float) ((Map.Entry) (o1)).getValue() * 100_000 +
+                        ((PageEntity) ((Map.Entry) (o1)).getKey()).getId()) * -1))
+                        .compareTo((((float) ((Map.Entry) (o2)).getValue() * 100_000 +
+                                ((PageEntity) ((Map.Entry) (o2)).getKey()).getId()) * -1)));
+            } else {
+                //Custom Comparator
+                list.sort((o1, o2) -> ((Comparable) ((Map.Entry) (o1)).getValue()).compareTo(((Map.Entry) (o2)).getValue()));
+            }
 
             HashMap sortedHashMap = new LinkedHashMap();
             for (Object o : list) {
@@ -242,7 +272,7 @@ public class SearchServiceImpl implements SearchService {
         Document doc = Jsoup.parse(page.getContent());
         String title = doc.title();
         item.setTitle(title);
-        String text = Jsoup.clean(doc.text(), Safelist.none())
+        String text = Jsoup.clean(doc.text(), Safelist.simpleText())
                 .replaceAll("\\s+", " ");
         String snippet = createSnippet(text);
         String snippedWithBoldLemmas = addBoldToSnippet(snippet);
@@ -260,10 +290,13 @@ public class SearchServiceImpl implements SearchService {
             boolean haveToBold = false;
             for (String keySnippet : lemmaSnippet) {
                 for (String lemmaFromQuery : lemmas) {
-                    if (lemmaFromQuery.equals(keySnippet)) {
+                    if (keySnippet.equals(lemmaFromQuery)) {
                         haveToBold = true;
                         break;
                     }
+                }
+                if (haveToBold) {
+                    break;
                 }
             }
             result = result + (haveToBold ? "<b> " : " ") + snippetWord + (haveToBold ? "</b> " : " ");
@@ -271,37 +304,39 @@ public class SearchServiceImpl implements SearchService {
         return result;
     }
 
-    private String createSnippet(String  text) {
+    private String createSnippet(String text) {
 
-        String[] textWords = text
-                .trim().split("\\s");
+        String dottedText = text
+                .replaceAll("[\\s,:;!?'\"\\d]", ".");
+
+        String[] textWords = dottedText
+                .trim().split("[.]");
         int start = -1;
         for (String word : textWords) {
             Set<String> lemmaWords = lemmaFinder.getLemmaSet(word);
             for (String lemmaWord : lemmaWords) {
                 if (lemmas.contains(lemmaWord)) {
-                    start = text.indexOf(word);
+                    start = dottedText.indexOf(word + ".");
                     break;
                 }
             }
             if (start > -1) break;
         }
-        String textToFindStart = text.replaceAll("[А-ЯЁ\"«]", "!");
+        String textToFindStart = dottedText.replaceAll("[А-ЯЁ\"«]", "!");
 
         for (; start > 0; start--) {
-            if (textToFindStart.substring(start).startsWith(" !")) {
+            if (textToFindStart.substring(start).startsWith(".!")) {
                 start++;
                 break;
             }
         }
-
         int end = Math.min(start + SNIPPED_CHARS_COUNT, text.length() - 1);
         for (; end < text.length(); end++) {
-            if (textToFindStart.substring(end).startsWith(" !")) {
+            if (textToFindStart.substring(end).startsWith(".!")) {
                 break;
             }
         }
 
-        return text.substring(start, end);
+        return text.substring(Math.max(0, start), end);
     }
 }

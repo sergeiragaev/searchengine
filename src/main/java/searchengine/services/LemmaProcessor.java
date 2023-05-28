@@ -65,23 +65,15 @@ public class LemmaProcessor {
     }
 
     private LemmaEntity saveLemma(String lemma) {
-        synchronized (Lock.class) {
-            Lock readLock = rwLock.readLock();
-            readLock.lock();
-            try {
-                LemmaEntity lemmaEntity = lemmaRepository.findLemmaEntityByLemmaAndSite(lemma, site);
-                if (lemmaEntity == null) {
-                    lemmaEntity = new LemmaEntity();
-                }
-                lemmaEntity.setLemma(lemma);
-                lemmaEntity.setFrequency(lemmaEntity.getFrequency() + 1);
-                lemmaEntity.setSite(site);
-                lemmaRepository.save(lemmaEntity);
-                return lemmaEntity;
-            } finally {
-                readLock.unlock();
-            }
+        LemmaEntity lemmaEntity = lemmaRepository.findLemmaEntityByLemmaAndSite(lemma, site);
+        if (lemmaEntity == null) {
+            lemmaEntity = new LemmaEntity();
         }
+        lemmaEntity.setLemma(lemma);
+        lemmaEntity.setFrequency(lemmaEntity.getFrequency() + 1);
+        lemmaEntity.setSite(site);
+        lemmaRepository.save(lemmaEntity);
+        return lemmaEntity;
     }
 
     public void deleteLemmas() {

@@ -27,11 +27,6 @@ public class LinksProcessor extends RecursiveTask<TreeSet<String>> {
             return listOfURL;
         }
 
-        try {
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
 
         String validURL = rootURL + URL;
         String urlPath = URL;

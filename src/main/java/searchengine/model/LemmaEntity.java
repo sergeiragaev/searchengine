@@ -18,7 +18,7 @@ public class LemmaEntity {
     @JoinColumn(nullable = false)
     private SiteEntity site;
 
-    @Column(columnDefinition = "VARCHAR(255) NOT NULL")
+    @Column(columnDefinition = "VARCHAR(255) NOT NULL, Index (lemma), Unique (site_id, lemma)")
     private String lemma;
 
     @Column(nullable = false)
