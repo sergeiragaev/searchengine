@@ -42,47 +42,84 @@ public class SearchServiceImpl implements SearchService {
     private List<SiteEntity> siteEntities;
     private Set<String> lemmas;
     private LemmaFinder lemmaFinder;
-    private List<DetailedSearchItem> detailedData;
+    private final List<DetailedSearchItem> detailedData = new ArrayList<>();
 
-    private String query;
+    private String query = "";
+    private String site = "";
 
     private static final int SNIPPED_CHARS_COUNT = 200;
-    private static final int MAX_RESULT_COUNT = 100;
+
+    private static final int MAX_PAGES_COUNT = 500;
+
+    private int limit;
+    private int offset;
+    private int count = 0;
+
+    private Float maxRank = 0F;
+    private Map<PageEntity, Float> sortedPagesMap = new HashMap<>();
 
 
     @Override
     public SearchResponse search(String query, String site, int offset, int limit) {
+        this.offset = offset;
+        this.limit = limit;
 
-        this.query = query;
         siteEntities = createSiteEntityList(site);
 
-        detailedData = new ArrayList<>();
-
-        try {
-            lemmaFinder = LemmaFinder.getInstance();
-            lemmas = lemmaFinder.getLemmaSet(query);
-
-            createdDetailedData();
-
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        if (site == null) {
+            site = "";
         }
 
+        if (!this.query.equals(query) || !this.site.equals(site)) {
+            this.query = query;
+            this.site = site;
+            sortedPagesMap.clear();
+            detailedData.clear();
+            maxRank = 0F;
+        }
+
+        createData();
+
         if (detailedData.isEmpty()) {
+            log.info("No pages found");
             ErrorSearchResponse response = new ErrorSearchResponse();
             response.setError("По вашему запросу ничего не найдено.");
             response.setResult(false);
             return response;
         } else {
+            if (count == MAX_PAGES_COUNT) {
+                log.info("Showing {} pages of more then {} found, offset {} ({})", detailedData.size(), count, offset, query);
+            } else if (detailedData.size() < count) {
+                log.info("Showing {} pages of {} found, offset {} ({})", detailedData.size(), count, offset, query);
+            } else {
+                log.info("Found {} pages ({})", detailedData.size(), query);
+            }
             SuccessResponse successResponse = new SuccessResponse();
             successResponse.setResult(true);
             successResponse.setData(detailedData);
-            successResponse.setCount(detailedData.size());
+            successResponse.setCount(count);
             return successResponse;
         }
     }
 
-    private void createdDetailedData() {
+    private void createData() {
+        if (sortedPagesMap.isEmpty()) {
+            try {
+                lemmaFinder = LemmaFinder.getInstance();
+                lemmas = lemmaFinder.getLemmaSet(query);
+
+                createSortedPagesMap();
+
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            detailedData.clear();
+            createDetailedData();
+        }
+    }
+
+    private void createSortedPagesMap() {
         Map<LemmaEntity, Integer> lemmaFrequencyMap = createLemmaFrequencyMap();
         List<SiteEntity> checkedSites = new ArrayList<>();
         HashSet<PageEntity> foundPages = new HashSet<>();
@@ -95,6 +132,7 @@ public class SearchServiceImpl implements SearchService {
             checkedSites.add(currentSiteEntity);
             foundPages.addAll(collectPages(lemmaEntity));
         }
+        count = foundPages.size();
         sortPagesByRank(foundPages);
     }
 
@@ -117,27 +155,26 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private void sortPagesByRank(HashSet<PageEntity> foundPages) {
-        Float maxRank = 0F;
         HashMap<PageEntity, Float> rankedPages = new HashMap<>();
         for (PageEntity page : foundPages) {
             maxRank = Math.max(addToRankedPages(page, rankedPages), maxRank);
         }
-        Map<PageEntity, Float> sortedPagesMap = (Map<PageEntity, Float>) sortValues(rankedPages, true);
+        sortedPagesMap = (Map<PageEntity, Float>) sortValues(rankedPages, true);
+        createDetailedData();
+    }
+
+    private void createDetailedData() {
+        int i = 0;
         for (PageEntity page : sortedPagesMap.keySet()) {
+            if (i < offset) {
+                i++;
+                continue;
+            }
             float relevance = sortedPagesMap.get(page) / maxRank;
             addToDetailedList(page, relevance);
-            if (detailedData.size() == MAX_RESULT_COUNT) {
+            if (detailedData.size() == limit) {
                 break;
             }
-        }
-        if (detailedData.isEmpty()) {
-            log.info("No pages found");
-        } else if (foundPages.size() == 500) {
-            log.info("Showing {} pages of more then {} found ({})", MAX_RESULT_COUNT, foundPages.size(), query);
-        } else if (detailedData.size() < foundPages.size()) {
-            log.info("Showing {} pages of {} found ({})", MAX_RESULT_COUNT, foundPages.size(), query);
-        } else {
-            log.info("Found {} pages ({})", detailedData.size(), query);
         }
     }
 
@@ -284,7 +321,7 @@ public class SearchServiceImpl implements SearchService {
     private String addBoldToSnippet(String text) {
         String[] snippetWords = text
                 .trim().split("\\s");
-        String result = "";
+        StringBuilder result = new StringBuilder();
         for (String snippetWord : snippetWords) {
             Set<String> lemmaSnippet = lemmaFinder.getLemmaSet(snippetWord);
             boolean haveToBold = false;
@@ -299,9 +336,11 @@ public class SearchServiceImpl implements SearchService {
                     break;
                 }
             }
-            result = result + (haveToBold ? "<b> " : " ") + snippetWord + (haveToBold ? "</b> " : " ");
+            result.append(haveToBold ? "<b> " : " ")
+                    .append(snippetWord)
+                    .append(haveToBold ? "</b> " : " ");
         }
-        return result;
+        return result.toString();
     }
 
     private String createSnippet(String text) {
