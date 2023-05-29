@@ -15,13 +15,13 @@ which gives the ability to search text among the parsed sites after indexing.
 The web interface of the application is implemented on one web page with three tabs:
 
 * Dashboard – shows statistics on sites
-  dashboard tab image
+  dashboard tab
   <img src="src/main/resources/static/assets/images/dashboard.png"/>
 * Management – contains indexing tools
-  management tab image
+  management tab
   <img src="src/main/resources/static/assets/images/management.png"/>
 * Search – contains a search field and a drop-down list for selecting a site
-  search tab image
+  search tab
   <img src="src/main/resources/static/assets/images/search.png"/>
 *
 ### Technologies and tools:
