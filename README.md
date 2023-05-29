@@ -16,15 +16,14 @@ The web interface of the application is implemented on one web page with three t
 
 * Dashboard – shows statistics on sites
   dashboard tab image
-  <img src="/Users/serg/Desktop/Снимок экрана 2023-05-29 в 08.52.40.png"/>
-
+  <img src="src/main/resources/static/assets/images/dashboard.png"/>
 * Management – contains indexing tools
   management tab image
-  <img src="/Users/serg/Desktop/Снимок экрана 2023-05-29 в 08.54.10.png"/>
+  <img src="src/main/resources/static/assets/images/management.png"/>
 * Search – contains a search field and a drop-down list for selecting a site
   search tab image
-  <img src="/Users/serg/Desktop/Снимок экрана 2023-05-29 в 09.15.23.png"/>
-
+  <img src="src/main/resources/static/assets/images/search.png"/>
+*
 ### Technologies and tools:
 
 * Java 19
