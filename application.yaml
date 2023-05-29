@@ -20,12 +20,12 @@ indexing-settings:
   sites:
     - url: https://www.skillbox.ru
       name: Skillbox
-#    - url: https://et-cetera.ru/mobile
-#      name: Et Cetera
-#    - url: https://www.playback.ru
-#      name: PlayBack.Ru
-#    - url: https://radiomv.ru
-#      name: Radio MV
+    - url: https://et-cetera.ru/mobile
+      name: Et Cetera
+    - url: https://www.playback.ru
+      name: PlayBack.Ru
+    - url: https://radiomv.ru
+      name: Radio MV
 #    - url: https://dimonvideo.ru
 #      name: dimonvideo
 
