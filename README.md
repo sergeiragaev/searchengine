@@ -23,7 +23,7 @@ The web interface of the application is implemented on one web page with three t
 * Search – contains a search field and a drop-down list for selecting a site
   search tab
   <img src="src/main/resources/static/assets/images/search.png"/>
-*
+
 ### Technologies and tools:
 
 * Java 19
