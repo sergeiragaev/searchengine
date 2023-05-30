@@ -26,7 +26,7 @@ The web interface of the application is implemented on one web page with three t
 
 ### Technologies and tools:
 
-* Java 19
+* Java 17
 * Spring Boot 2.7.1
 * Maven
 * MySQL
